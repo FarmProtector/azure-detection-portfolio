@@ -1,0 +1,384 @@
+{
+    "version": "Notebook/1.0",
+    "items": [
+        {
+            "type": 1,
+            "content": {
+                "json": "# 🌍 High-Risk Azure Control-Plane Changes by Origin\n\nMaps the caller IP (`CallerIpAddress`) of **mutating** Azure management operations from `AzureActivity`, weighted by how dangerous the operation is. Bubble **size** and **color** = `RiskScore` (Critical = 10, High = 5, Medium = 1 per operation).\n\n**The bubble to fear is a Critical operation — a role assignment, an `elevateAccess`, a deleted diagnostic setting — succeeding from a country you don't operate in.**\n\n> Enriched with the native `geo_info_from_ip_address()` function. Geo data (MaxMind GeoLite2) is approximate — read as regions, not pinpoints. VPN and cloud-egress IPs resolve to the provider's datacenter, not the operator."
+            },
+            "name": "header",
+            "id": "a1d030de-8ea6-4787-8615-8e3d353c8065"
+        },
+        {
+            "type": 9,
+            "content": {
+                "version": "KqlParameterItem/1.0",
+                "parameters": [
+                    {
+                        "id": "tr",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "TimeRange",
+                        "label": "Time range",
+                        "type": 4,
+                        "isRequired": true,
+                        "value": {
+                            "durationMs": 604800000
+                        },
+                        "typeSettings": {
+                            "selectableValues": [
+                                {
+                                    "durationMs": 3600000
+                                },
+                                {
+                                    "durationMs": 14400000
+                                },
+                                {
+                                    "durationMs": 43200000
+                                },
+                                {
+                                    "durationMs": 86400000
+                                },
+                                {
+                                    "durationMs": 604800000
+                                },
+                                {
+                                    "durationMs": 2592000000
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        "id": "mrt",
+                        "version": "KqlParameterItem/1.0",
+                        "name": "MinRiskTier",
+                        "label": "Minimum risk tier",
+                        "type": 2,
+                        "isRequired": true,
+                        "typeSettings": {
+                            "additionalResourceOptions": [],
+                            "showDefault": false
+                        },
+                        "jsonData": "[{\"value\": \"Medium\", \"label\": \"Medium and above\", \"selected\": true}, {\"value\": \"High\", \"label\": \"High and above\"}, {\"value\": \"Critical\", \"label\": \"Critical only\"}]",
+                        "value": "Medium"
+                    }
+                ],
+                "style": "pills"
+            },
+            "name": "parameters",
+            "id": "bc1d9fdc-08bc-43b5-98a9-9b3fc0061aeb"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\"/write\", \"/delete\", \"/action\")\n| where isnotempty(CallerIpAddress)\n| extend RiskTier = case(\n    // CRITICAL - identity, entitlement, and defense-evasion operations.\n    // These grant or hide access; a foreign origin here is an incident.\n    OperationNameValue has_any (\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n        \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n        \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n        \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n        \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n        \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n    ), \"Critical\",\n    // HIGH - secret access and network exposure. Key Vault operations and\n    // NSG/firewall changes are the classic pre- and post-exploitation steps.\n    OperationNameValue has_any (\n        \"MICROSOFT.KEYVAULT/VAULTS/SECRETS/\",\n        \"MICROSOFT.KEYVAULT/VAULTS/ACCESSPOLICIES/WRITE\",\n        \"MICROSOFT.KEYVAULT/VAULTS/DELETE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/DELETE\",\n        \"MICROSOFT.NETWORK/AZUREFIREWALLS/WRITE\",\n        \"MICROSOFT.NETWORK/PUBLICIPADDRESSES/WRITE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/REGENERATEKEY/ACTION\",\n        \"MICROSOFT.WEB/SITES/CONFIG/LIST/ACTION\",\n        \"MICROSOFT.MANAGEDIDENTITY/USERASSIGNEDIDENTITIES/WRITE\"\n    ), \"High\",\n    // MEDIUM - compute/data-plane manipulation and remote execution paths.\n    OperationNameValue has_any (\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/RUNCOMMAND/ACTION\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/EXTENSIONS/WRITE\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/DELETE\",\n        \"MICROSOFT.SQL/SERVERS/FIREWALLRULES/WRITE\",\n        \"MICROSOFT.SQL/SERVERS/DATABASES/DELETE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/DELETE\",\n        \"MICROSOFT.LOGIC/WORKFLOWS/WRITE\",\n        \"MICROSOFT.AUTOMATION/AUTOMATIONACCOUNTS/RUNBOOKS/WRITE\"\n    ), \"Medium\",\n    \"Low\")\n| where RiskTier != \"Low\"\n| where \"{MinRiskTier}\" == \"Medium\"\n        or (\"{MinRiskTier}\" == \"High\" and RiskTier in (\"Critical\", \"High\"))\n        or (\"{MinRiskTier}\" == \"Critical\" and RiskTier == \"Critical\")\n// Strip any :port suffix on IPv4; leave IPv6 (colon-bearing, no port) intact.\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n// Azure-internal callers surface as literal tokens, not addresses.\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| extend RiskWeight = case(RiskTier == \"Critical\", 10, RiskTier == \"High\", 5, 1)\n| summarize RiskScore     = sum(RiskWeight),\n            CriticalOps   = countif(RiskTier == \"Critical\"),\n            HighOps       = countif(RiskTier == \"High\"),\n            DeniedOps     = countif(ActivityStatusValue in (\"Failure\", \"Failed\")),\n            DistinctIPs   = dcount(SourceIP),\n            DistinctCallers = dcount(Caller)\n| project pack_array(\n      pack(\"Metric\", \"Total risk score\",   \"Value\", RiskScore),\n      pack(\"Metric\", \"Critical operations\",\"Value\", CriticalOps),\n      pack(\"Metric\", \"High operations\",    \"Value\", HighOps),\n      pack(\"Metric\", \"Denied operations\",  \"Value\", DeniedOps),\n      pack(\"Metric\", \"Distinct source IPs\",\"Value\", DistinctIPs),\n      pack(\"Metric\", \"Distinct callers\",   \"Value\", DistinctCallers)\n  )\n| mv-expand Item = Column1\n| project Metric = tostring(Item.Metric), Value = toint(Item.Value)",
+                "size": 0,
+                "title": "At a glance",
+                "timeContextFromParameter": "TimeRange",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "tiles",
+                "tileSettings": {
+                    "titleContent": {
+                        "columnMatch": "Metric",
+                        "formatter": 1
+                    },
+                    "leftContent": {
+                        "columnMatch": "Value",
+                        "formatter": 12,
+                        "formatOptions": {
+                            "palette": "auto"
+                        },
+                        "numberFormat": {
+                            "unit": 17,
+                            "options": {
+                                "maximumFractionDigits": 0
+                            }
+                        }
+                    },
+                    "showBorder": true
+                },
+                "crossComponentResources": [
+                    "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+                ]
+            },
+            "name": "tiles-summary",
+            "id": "f2b91c47-3a5e-4d18-9c62-1b7ac4e5d900"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "## 1️⃣ Where privileged changes originate — `AzureActivity`\n\nOne bubble per source IP. **Size and color = `RiskScore`**, so a single `elevateAccess` from an unfamiliar country outweighs a chatty deployment pipeline. Hover for the tier breakdown (`C/H/M`) and the denied count — a high-denial origin is either a broken pipeline or someone probing what their token can reach."
+            },
+            "name": "text-map",
+            "id": "d3554ef8-a67a-4303-b4a7-d11a05054184"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\"/write\", \"/delete\", \"/action\")\n| where isnotempty(CallerIpAddress)\n| extend RiskTier = case(\n    // CRITICAL - identity, entitlement, and defense-evasion operations.\n    // These grant or hide access; a foreign origin here is an incident.\n    OperationNameValue has_any (\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n        \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n        \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n        \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n        \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n        \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n    ), \"Critical\",\n    // HIGH - secret access and network exposure. Key Vault operations and\n    // NSG/firewall changes are the classic pre- and post-exploitation steps.\n    OperationNameValue has_any (\n        \"MICROSOFT.KEYVAULT/VAULTS/SECRETS/\",\n        \"MICROSOFT.KEYVAULT/VAULTS/ACCESSPOLICIES/WRITE\",\n        \"MICROSOFT.KEYVAULT/VAULTS/DELETE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/DELETE\",\n        \"MICROSOFT.NETWORK/AZUREFIREWALLS/WRITE\",\n        \"MICROSOFT.NETWORK/PUBLICIPADDRESSES/WRITE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/REGENERATEKEY/ACTION\",\n        \"MICROSOFT.WEB/SITES/CONFIG/LIST/ACTION\",\n        \"MICROSOFT.MANAGEDIDENTITY/USERASSIGNEDIDENTITIES/WRITE\"\n    ), \"High\",\n    // MEDIUM - compute/data-plane manipulation and remote execution paths.\n    OperationNameValue has_any (\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/RUNCOMMAND/ACTION\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/EXTENSIONS/WRITE\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/DELETE\",\n        \"MICROSOFT.SQL/SERVERS/FIREWALLRULES/WRITE\",\n        \"MICROSOFT.SQL/SERVERS/DATABASES/DELETE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/DELETE\",\n        \"MICROSOFT.LOGIC/WORKFLOWS/WRITE\",\n        \"MICROSOFT.AUTOMATION/AUTOMATIONACCOUNTS/RUNBOOKS/WRITE\"\n    ), \"Medium\",\n    \"Low\")\n| where RiskTier != \"Low\"\n| where \"{MinRiskTier}\" == \"Medium\"\n        or (\"{MinRiskTier}\" == \"High\" and RiskTier in (\"Critical\", \"High\"))\n        or (\"{MinRiskTier}\" == \"Critical\" and RiskTier == \"Critical\")\n// Strip any :port suffix on IPv4; leave IPv6 (colon-bearing, no port) intact.\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n// Azure-internal callers surface as literal tokens, not addresses.\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| extend RiskWeight = case(RiskTier == \"Critical\", 10, RiskTier == \"High\", 5, 1)\n| extend geo = geo_info_from_ip_address(SourceIP)\n| extend Latitude  = toreal(geo.latitude),\n         Longitude = toreal(geo.longitude),\n         Country   = tostring(geo.country),\n         City      = tostring(geo.city)\n| where isnotempty(Latitude) and isnotempty(Longitude)\n// Aggregate per source IP so the map plots one bubble per origin.\n| summarize RiskScore        = sum(RiskWeight),\n            Operations       = count(),\n            CriticalOps      = countif(RiskTier == \"Critical\"),\n            HighOps          = countif(RiskTier == \"High\"),\n            MediumOps        = countif(RiskTier == \"Medium\"),\n            Succeeded        = countif(ActivityStatusValue == \"Success\"),\n            Denied           = countif(ActivityStatusValue in (\"Failure\", \"Failed\")),\n            Callers          = dcount(Caller),\n            CallerList       = make_set(Caller, 10),\n            Subscriptions    = dcount(SubscriptionId),\n            RiskyOperations  = make_set_if(OperationNameValue, RiskTier in (\"Critical\", \"High\"), 15),\n            FirstSeen        = min(TimeGenerated),\n            LastSeen         = max(TimeGenerated)\n         by SourceIP, Country, City, Latitude, Longitude\n| extend HighestTier = case(CriticalOps > 0, \"Critical\", HighOps > 0, \"High\", \"Medium\")\n| extend MapLabel = strcat(SourceIP, \" (\", Country, \") - \", HighestTier,\n                           \" | \", CriticalOps, \"C/\", HighOps, \"H/\", MediumOps, \"M\",\n                           \" | \", Denied, \" denied\")\n| project Latitude, Longitude, MapLabel, RiskScore, HighestTier,\n          CriticalOps, HighOps, MediumOps, Operations, Succeeded, Denied,\n          Callers, Subscriptions, SourceIP, Country, City,\n          CallerList, RiskyOperations, FirstSeen, LastSeen\n| order by RiskScore desc",
+                "size": 0,
+                "title": "High-risk control-plane origins — bubble size = risk score",
+                "timeContextFromParameter": "TimeRange",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "map",
+                "mapSettings": {
+                    "locInfo": "LatLong",
+                    "latitude": "Latitude",
+                    "longitude": "Longitude",
+                    "sizeSettings": "RiskScore",
+                    "sizeAggregation": "Sum",
+                    "labelSettings": "MapLabel",
+                    "legendMetric": "RiskScore",
+                    "legendAggregation": "Sum",
+                    "legendColor": "RiskScore",
+                    "itemColorSettings": {
+                        "nodeColorField": "RiskScore",
+                        "colorAggregation": "Sum",
+                        "type": "heatmap",
+                        "heatmapPalette": "greenRed"
+                    }
+                },
+                "crossComponentResources": [
+                    "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+                ]
+            },
+            "name": "map-activity",
+            "id": "ad712db7-5cbe-4264-a6c4-9879016cce69"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "## 2️⃣ Risk over time\n\nStacked by tier. A single spike is usually a change window; a sustained Critical band is not."
+            },
+            "name": "text-timeline",
+            "id": "6e0c9a11-77b4-4f2a-8d33-2c9f4b0e7a55"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\"/write\", \"/delete\", \"/action\")\n| where isnotempty(CallerIpAddress)\n| extend RiskTier = case(\n    // CRITICAL - identity, entitlement, and defense-evasion operations.\n    // These grant or hide access; a foreign origin here is an incident.\n    OperationNameValue has_any (\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n        \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n        \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n        \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n        \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n        \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n    ), \"Critical\",\n    // HIGH - secret access and network exposure. Key Vault operations and\n    // NSG/firewall changes are the classic pre- and post-exploitation steps.\n    OperationNameValue has_any (\n        \"MICROSOFT.KEYVAULT/VAULTS/SECRETS/\",\n        \"MICROSOFT.KEYVAULT/VAULTS/ACCESSPOLICIES/WRITE\",\n        \"MICROSOFT.KEYVAULT/VAULTS/DELETE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/DELETE\",\n        \"MICROSOFT.NETWORK/AZUREFIREWALLS/WRITE\",\n        \"MICROSOFT.NETWORK/PUBLICIPADDRESSES/WRITE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/REGENERATEKEY/ACTION\",\n        \"MICROSOFT.WEB/SITES/CONFIG/LIST/ACTION\",\n        \"MICROSOFT.MANAGEDIDENTITY/USERASSIGNEDIDENTITIES/WRITE\"\n    ), \"High\",\n    // MEDIUM - compute/data-plane manipulation and remote execution paths.\n    OperationNameValue has_any (\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/RUNCOMMAND/ACTION\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/EXTENSIONS/WRITE\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/DELETE\",\n        \"MICROSOFT.SQL/SERVERS/FIREWALLRULES/WRITE\",\n        \"MICROSOFT.SQL/SERVERS/DATABASES/DELETE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/DELETE\",\n        \"MICROSOFT.LOGIC/WORKFLOWS/WRITE\",\n        \"MICROSOFT.AUTOMATION/AUTOMATIONACCOUNTS/RUNBOOKS/WRITE\"\n    ), \"Medium\",\n    \"Low\")\n| where RiskTier != \"Low\"\n| where \"{MinRiskTier}\" == \"Medium\"\n        or (\"{MinRiskTier}\" == \"High\" and RiskTier in (\"Critical\", \"High\"))\n        or (\"{MinRiskTier}\" == \"Critical\" and RiskTier == \"Critical\")\n// Strip any :port suffix on IPv4; leave IPv6 (colon-bearing, no port) intact.\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n// Azure-internal callers surface as literal tokens, not addresses.\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| extend RiskWeight = case(RiskTier == \"Critical\", 10, RiskTier == \"High\", 5, 1)\n// Risk over time, split by tier - shows whether an origin is a one-off\n// or a sustained campaign. Bin auto-scales with the selected time range.\n| summarize RiskScore = sum(RiskWeight) by bin(TimeGenerated, {TimeRange:grain}), RiskTier\n| order by TimeGenerated asc",
+                "size": 0,
+                "title": "Risk score over time by tier",
+                "timeContextFromParameter": "TimeRange",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "barchart",
+                "chartSettings": {
+                    "xAxis": "TimeGenerated",
+                    "yAxis": [
+                        "RiskScore"
+                    ],
+                    "group": "RiskTier",
+                    "createOtherGroup": null,
+                    "seriesLabelSettings": [
+                        {
+                            "seriesName": "Critical",
+                            "color": "redBright"
+                        },
+                        {
+                            "seriesName": "High",
+                            "color": "orange"
+                        },
+                        {
+                            "seriesName": "Medium",
+                            "color": "yellow"
+                        }
+                    ]
+                },
+                "crossComponentResources": [
+                    "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+                ]
+            },
+            "name": "timeline-activity",
+            "id": "8a4f1d2c-90b6-4e77-a5c1-3d8e6f2b1c44"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "## 3️⃣ Source IP breakdown\n\nThe same data as the map, ranked by risk score. `RiskyOperations` lists the exact Critical/High operations each origin performed — start triage here."
+            },
+            "name": "text-grid",
+            "id": "b5d7e3f9-1c48-4a6b-9e02-7f5a8c1d4e66"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\"/write\", \"/delete\", \"/action\")\n| where isnotempty(CallerIpAddress)\n| extend RiskTier = case(\n    // CRITICAL - identity, entitlement, and defense-evasion operations.\n    // These grant or hide access; a foreign origin here is an incident.\n    OperationNameValue has_any (\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n        \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n        \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n        \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n        \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n        \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n    ), \"Critical\",\n    // HIGH - secret access and network exposure. Key Vault operations and\n    // NSG/firewall changes are the classic pre- and post-exploitation steps.\n    OperationNameValue has_any (\n        \"MICROSOFT.KEYVAULT/VAULTS/SECRETS/\",\n        \"MICROSOFT.KEYVAULT/VAULTS/ACCESSPOLICIES/WRITE\",\n        \"MICROSOFT.KEYVAULT/VAULTS/DELETE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/DELETE\",\n        \"MICROSOFT.NETWORK/AZUREFIREWALLS/WRITE\",\n        \"MICROSOFT.NETWORK/PUBLICIPADDRESSES/WRITE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/REGENERATEKEY/ACTION\",\n        \"MICROSOFT.WEB/SITES/CONFIG/LIST/ACTION\",\n        \"MICROSOFT.MANAGEDIDENTITY/USERASSIGNEDIDENTITIES/WRITE\"\n    ), \"High\",\n    // MEDIUM - compute/data-plane manipulation and remote execution paths.\n    OperationNameValue has_any (\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/RUNCOMMAND/ACTION\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/EXTENSIONS/WRITE\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/DELETE\",\n        \"MICROSOFT.SQL/SERVERS/FIREWALLRULES/WRITE\",\n        \"MICROSOFT.SQL/SERVERS/DATABASES/DELETE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/DELETE\",\n        \"MICROSOFT.LOGIC/WORKFLOWS/WRITE\",\n        \"MICROSOFT.AUTOMATION/AUTOMATIONACCOUNTS/RUNBOOKS/WRITE\"\n    ), \"Medium\",\n    \"Low\")\n| where RiskTier != \"Low\"\n| where \"{MinRiskTier}\" == \"Medium\"\n        or (\"{MinRiskTier}\" == \"High\" and RiskTier in (\"Critical\", \"High\"))\n        or (\"{MinRiskTier}\" == \"Critical\" and RiskTier == \"Critical\")\n// Strip any :port suffix on IPv4; leave IPv6 (colon-bearing, no port) intact.\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n// Azure-internal callers surface as literal tokens, not addresses.\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| extend RiskWeight = case(RiskTier == \"Critical\", 10, RiskTier == \"High\", 5, 1)\n| extend geo = geo_info_from_ip_address(SourceIP)\n| extend Latitude  = toreal(geo.latitude),\n         Longitude = toreal(geo.longitude),\n         Country   = tostring(geo.country),\n         City      = tostring(geo.city)\n| where isnotempty(Latitude) and isnotempty(Longitude)\n// Companion grid: same data as the map, ranked, with callers and the exact\n// risky operations each origin performed.\n| summarize RiskScore       = sum(RiskWeight),\n            Operations      = count(),\n            CriticalOps     = countif(RiskTier == \"Critical\"),\n            HighOps         = countif(RiskTier == \"High\"),\n            MediumOps       = countif(RiskTier == \"Medium\"),\n            Succeeded       = countif(ActivityStatusValue == \"Success\"),\n            Denied          = countif(ActivityStatusValue in (\"Failure\", \"Failed\")),\n            Callers         = dcount(Caller),\n            CallerList      = make_set(Caller, 10),\n            Subscriptions   = dcount(SubscriptionId),\n            ResourceGroups  = dcount(ResourceGroup),\n            RiskyOperations = make_set_if(OperationNameValue, RiskTier in (\"Critical\", \"High\"), 15),\n            FirstSeen       = min(TimeGenerated),\n            LastSeen        = max(TimeGenerated)\n         by SourceIP, Country, City\n| extend HighestTier = case(CriticalOps > 0, \"Critical\", HighOps > 0, \"High\", \"Medium\")\n| project SourceIP, Country, City, HighestTier, RiskScore, Operations,\n          CriticalOps, HighOps, MediumOps, Succeeded, Denied,\n          Callers, CallerList, Subscriptions, ResourceGroups,\n          RiskyOperations, FirstSeen, LastSeen\n| order by RiskScore desc",
+                "size": 0,
+                "title": "Source IP breakdown (risk, success vs. denied)",
+                "timeContextFromParameter": "TimeRange",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "HighestTier",
+                            "formatter": 18,
+                            "formatOptions": {
+                                "thresholdsOptions": "colors",
+                                "thresholdsGrid": [
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "Critical",
+                                        "representation": "redBright",
+                                        "text": "{0}{1}"
+                                    },
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "High",
+                                        "representation": "orange",
+                                        "text": "{0}{1}"
+                                    },
+                                    {
+                                        "operator": "Default",
+                                        "representation": "yellow",
+                                        "text": "{0}{1}"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "columnMatch": "RiskScore",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "redBright"
+                            }
+                        },
+                        {
+                            "columnMatch": "CriticalOps",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "red"
+                            }
+                        },
+                        {
+                            "columnMatch": "Denied",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "orange"
+                            }
+                        }
+                    ],
+                    "rowLimit": 200,
+                    "filter": true,
+                    "sortBy": [
+                        {
+                            "itemKey": "RiskScore",
+                            "sortOrder": 2
+                        }
+                    ]
+                },
+                "sortBy": [
+                    {
+                        "itemKey": "RiskScore",
+                        "sortOrder": 2
+                    }
+                ],
+                "crossComponentResources": [
+                    "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+                ]
+            },
+            "name": "grid-activity",
+            "id": "4d7de9f8-c76e-4a4a-b380-8ce2c8a389cc"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "## 4️⃣ Callers operating from multiple countries\n\nPivots the same events by identity instead of IP. `MultiCountry = true` inside a short time range is the control-plane equivalent of impossible travel — though a legitimate admin on a VPN will also trip it, so confirm against the IP list before escalating."
+            },
+            "name": "text-callers",
+            "id": "c8e1a4b7-2d59-4f3c-b160-9a2e7d5f3b88"
+        },
+        {
+            "type": 3,
+            "content": {
+                "version": "KqlItem/1.0",
+                "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\"/write\", \"/delete\", \"/action\")\n| where isnotempty(CallerIpAddress)\n| extend RiskTier = case(\n    // CRITICAL - identity, entitlement, and defense-evasion operations.\n    // These grant or hide access; a foreign origin here is an incident.\n    OperationNameValue has_any (\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n        \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n        \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n        \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n        \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n        \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n        \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n        \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n    ), \"Critical\",\n    // HIGH - secret access and network exposure. Key Vault operations and\n    // NSG/firewall changes are the classic pre- and post-exploitation steps.\n    OperationNameValue has_any (\n        \"MICROSOFT.KEYVAULT/VAULTS/SECRETS/\",\n        \"MICROSOFT.KEYVAULT/VAULTS/ACCESSPOLICIES/WRITE\",\n        \"MICROSOFT.KEYVAULT/VAULTS/DELETE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/SECURITYRULES/WRITE\",\n        \"MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/DELETE\",\n        \"MICROSOFT.NETWORK/AZUREFIREWALLS/WRITE\",\n        \"MICROSOFT.NETWORK/PUBLICIPADDRESSES/WRITE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/LISTKEYS/ACTION\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/REGENERATEKEY/ACTION\",\n        \"MICROSOFT.WEB/SITES/CONFIG/LIST/ACTION\",\n        \"MICROSOFT.MANAGEDIDENTITY/USERASSIGNEDIDENTITIES/WRITE\"\n    ), \"High\",\n    // MEDIUM - compute/data-plane manipulation and remote execution paths.\n    OperationNameValue has_any (\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/RUNCOMMAND/ACTION\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/EXTENSIONS/WRITE\",\n        \"MICROSOFT.COMPUTE/VIRTUALMACHINES/DELETE\",\n        \"MICROSOFT.SQL/SERVERS/FIREWALLRULES/WRITE\",\n        \"MICROSOFT.SQL/SERVERS/DATABASES/DELETE\",\n        \"MICROSOFT.STORAGE/STORAGEACCOUNTS/DELETE\",\n        \"MICROSOFT.LOGIC/WORKFLOWS/WRITE\",\n        \"MICROSOFT.AUTOMATION/AUTOMATIONACCOUNTS/RUNBOOKS/WRITE\"\n    ), \"Medium\",\n    \"Low\")\n| where RiskTier != \"Low\"\n| where \"{MinRiskTier}\" == \"Medium\"\n        or (\"{MinRiskTier}\" == \"High\" and RiskTier in (\"Critical\", \"High\"))\n        or (\"{MinRiskTier}\" == \"Critical\" and RiskTier == \"Critical\")\n// Strip any :port suffix on IPv4; leave IPv6 (colon-bearing, no port) intact.\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n// Azure-internal callers surface as literal tokens, not addresses.\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| extend RiskWeight = case(RiskTier == \"Critical\", 10, RiskTier == \"High\", 5, 1)\n| extend geo = geo_info_from_ip_address(SourceIP)\n| extend Latitude  = toreal(geo.latitude),\n         Longitude = toreal(geo.longitude),\n         Country   = tostring(geo.country),\n         City      = tostring(geo.city)\n| where isnotempty(Latitude) and isnotempty(Longitude)\n// Identity view: one row per caller, with every country they operated from.\n// Multiple countries for a single identity in a short window is the\n// impossible-travel signal on the control plane.\n| summarize RiskScore      = sum(RiskWeight),\n            Operations     = count(),\n            CriticalOps    = countif(RiskTier == \"Critical\"),\n            HighOps        = countif(RiskTier == \"High\"),\n            Denied         = countif(ActivityStatusValue in (\"Failure\", \"Failed\")),\n            Countries      = dcount(Country),\n            CountryList    = make_set(Country, 10),\n            SourceIPs      = dcount(SourceIP),\n            IPList         = make_set(SourceIP, 10),\n            RiskyOperations = make_set_if(OperationNameValue, RiskTier in (\"Critical\", \"High\"), 15),\n            FirstSeen      = min(TimeGenerated),\n            LastSeen       = max(TimeGenerated)\n         by Caller\n| extend MultiCountry = Countries > 1\n| project Caller, RiskScore, Operations, CriticalOps, HighOps, Denied,\n          Countries, CountryList, MultiCountry, SourceIPs, IPList,\n          RiskyOperations, FirstSeen, LastSeen\n| order by MultiCountry desc, RiskScore desc",
+                "size": 0,
+                "title": "Caller identities by risk and geographic spread",
+                "timeContextFromParameter": "TimeRange",
+                "queryType": 0,
+                "resourceType": "microsoft.operationalinsights/workspaces",
+                "visualization": "table",
+                "gridSettings": {
+                    "formatters": [
+                        {
+                            "columnMatch": "MultiCountry",
+                            "formatter": 18,
+                            "formatOptions": {
+                                "thresholdsOptions": "icons",
+                                "thresholdsGrid": [
+                                    {
+                                        "operator": "==",
+                                        "thresholdValue": "true",
+                                        "representation": "criticalIcon",
+                                        "text": "Multiple countries"
+                                    },
+                                    {
+                                        "operator": "Default",
+                                        "representation": "success",
+                                        "text": "Single country"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "columnMatch": "RiskScore",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "redBright"
+                            }
+                        },
+                        {
+                            "columnMatch": "CriticalOps",
+                            "formatter": 8,
+                            "formatOptions": {
+                                "palette": "red"
+                            }
+                        }
+                    ],
+                    "rowLimit": 200,
+                    "filter": true,
+                    "sortBy": [
+                        {
+                            "itemKey": "RiskScore",
+                            "sortOrder": 2
+                        }
+                    ]
+                },
+                "sortBy": [
+                    {
+                        "itemKey": "RiskScore",
+                        "sortOrder": 2
+                    }
+                ],
+                "crossComponentResources": [
+                    "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+                ]
+            },
+            "name": "grid-callers",
+            "id": "9f3b6c2d-4e81-4a05-8d7f-1b6c9e4a2f77"
+        },
+        {
+            "type": 1,
+            "content": {
+                "json": "---\n\n**Tuning notes.** Operations not listed in the `case()` classifier fall into the `Low` tier and are dropped from every widget — periodically review what's landing there so new resource providers don't go unmapped. To let non-KQL analysts adjust the tiers, move the operation lists into a Sentinel watchlist and `lookup` against it instead of maintaining them inline."
+            },
+            "name": "footer",
+            "id": "e7a2d5c8-3f61-4b09-9c4e-5d8f2a7b6e11"
+        }
+    ],
+    "fallbackResourceIds": [
+        "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+    ],
+    "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
+    "context": {
+        "ownerId": "/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>"
+    }
+}

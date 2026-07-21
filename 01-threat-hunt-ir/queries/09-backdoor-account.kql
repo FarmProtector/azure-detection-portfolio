@@ -1,0 +1,14 @@
+// Flag 10 (ProcessCommandLine — net user ... /add)
+// Result: screenshots/09-backdoor-account-result.png
+// Two correlated events seconds apart: account creation, then addition to
+// the local Administrators group.
+let start_time = datetime(2026-04-22T02:00:00.00Z);
+let end_time = datetime(2026-04-22T08:00:00.00Z);
+let HostInQuestion = "npt-ws01";
+DeviceProcessEvents
+| where TimeGenerated between (start_time .. end_time)
+| where DeviceName == HostInQuestion
+| where FileName in~ ("net.exe", "net1.exe")
+| project TimeGenerated, ActionType, FileName, ProcessCommandLine, InitiatingProcessFileName, InitiatingProcessAccountName
+| order by TimeGenerated asc
+| where ProcessCommandLine has_any ("user", "localgroup")

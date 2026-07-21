@@ -1,0 +1,14 @@
+// Flag 11 (DeviceName) — npt-srv01
+// Result: screenshots/10-lateral-movement-result.png
+// Scope widening: drops the npt-ws01 filter to find other impacted hosts.
+// npt-srv01 appears with a CommandAndControl alert (T1071/T1059/T1105),
+// EvidenceRole "Impacted" — confirming the attacker reached a second host.
+// NOTE: this alert fires at 00:37 UTC, ~4h before the 04:30-06:00 focus
+// window, indicating activity predating the stated investigation scope.
+let start_time = datetime(2026-04-22T02:00:00.00Z);
+let end_time = datetime(2026-04-22T08:00:00.00Z);
+AlertEvidence
+| where TimeGenerated between (start_time .. end_time)
+| where DeviceName startswith "npt-"
+| distinct TimeGenerated, DeviceName, Title, Categories, EntityType, EvidenceRole, Severity
+| order by TimeGenerated asc
