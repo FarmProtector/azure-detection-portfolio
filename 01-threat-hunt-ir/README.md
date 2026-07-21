@@ -1,6 +1,6 @@
 # Threat Hunt & Incident Report — NPT-WS01
 
-A hands-on-keyboard intrusion investigation, reconstructed entirely from
+A hands-on intrusion investigation, reconstructed entirely from
 Microsoft Defender Advanced Hunting telemetry and written up as a formal
 incident report against the **NIST SP 800-61 Rev. 2** lifecycle.
 
