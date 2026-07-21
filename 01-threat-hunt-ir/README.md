@@ -22,7 +22,22 @@ second host.
 | File | Contents |
 |---|---|
 | [`NPT-WS01-Incident-Report.pdf`](./NPT-WS01-Incident-Report.pdf) | Full report: executive summary, IOC table, detection-point rationale, attack chain reconstruction, impact/scope assessment, ATT&CK mapping, and a phased containment/eradication/recovery plan |
-| `queries/` | *(add your own)* the actual KQL you ran in Advanced Hunting to recover each indicator — one `.kql` file per flag, e.g. `01-suspicious-logon.kql`, `02-remote-ip.kql` |
+# Hunt Queries
+
+KQL used in Microsoft Defender Advanced Hunting to recover each flag.
+Screenshots of each result are in `screenshots/`.
+
+| File | Flags | Table |
+|---|---|---|
+| `01-account-logon.kql` | 1, 2 | DeviceLogonEvents |
+| `03-execution-chain.kql` | 3, 4 | DeviceProcessEvents |
+| `04-c2-connection.kql` | 5 | DeviceNetworkEvents |
+| `05-dropped-file.kql` | 6 | DeviceFileEvents |
+| `06-registry-persistence.kql` | 7 | DeviceRegistryEvents |
+| `07-scheduled-task.kql` | 8 | DeviceProcessEvents |
+| `08-service-persistence.kql` | 9 | DeviceProcessEvents |
+| `09-backdoor-account.kql` | 10 | DeviceProcessEvents |
+| `10-lateral-movement.kql` | 11 | AlertEvidence |
 
 ## Methodology highlights
 
