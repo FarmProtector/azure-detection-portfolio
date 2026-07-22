@@ -14,7 +14,33 @@ rather than leaving that logic in a passive dashboard.
 | File | Contents |
 |---|---|
 | [`analytics-rule.json`](./analytics-rule.json) | Exported rule definition — query, scheduling, entity mappings, MITRE ATT&CK techniques |
-| `screenshots/` | Wizard configuration and a permission-boundary test |
+| [`screenshots/`](./screenshots) | Wizard configuration, step by step |
+
+![Rule summary — Review + create](./screenshots/04-review-create.png)
+
+## Configuration walkthrough
+
+**General** — name, description, severity, and MITRE ATT&CK techniques.
+
+![General configuration](./screenshots/01-general.png)
+
+**Rule query and scheduling** — the Critical-tier KQL, run frequency, and
+alert threshold, alongside the results simulation showing the query
+returning real matches.
+
+![Rule query and scheduling](./screenshots/02-rule-query-logic.png)
+
+![Query results in Advanced Hunting](./screenshots/02-rule-query-results.png)
+
+**Entity mapping** — Account (Caller) and IP (SourceIP), so incidents carry
+the context an analyst needs without manual lookup.
+
+![Entity mapping](./screenshots/06-entity-mapping.png)
+
+**Incident settings** — alert-to-incident grouping deliberately disabled
+(see Design decisions below).
+
+![Incident settings](./screenshots/03-Incident-settings.png)
 
 ## Design decisions
 
