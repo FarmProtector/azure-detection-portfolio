@@ -1,0 +1,91 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "workspace": {
+            "type": "String"
+        }
+    },
+    "resources": [
+        {
+            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/39994367-dcdc-4587-af57-895ae4221a6b')]",
+            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/39994367-dcdc-4587-af57-895ae4221a6b')]",
+            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
+            "kind": "Scheduled",
+            "apiVersion": "2023-12-01-preview",
+            "properties": {
+                "displayName": "Critical-Risk Azure Control-Plane Operation",
+                "description": "Fires when a Critical-tier Azure management operation (role assignment,\nelevateAccess, diagnostic setting deletion, etc.) is performed. Based on\nthe risk classifier from the control-plane geo-map workbook.",
+                "severity": "High",
+                "enabled": false,
+                "query": "AzureActivity\n| where CategoryValue == \"Administrative\"\n| where OperationNameValue has_any (\n    \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE\",\n    \"MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE\",\n    \"MICROSOFT.AUTHORIZATION/ROLEDEFINITIONS/WRITE\",\n    \"MICROSOFT.AUTHORIZATION/ELEVATEACCESS/ACTION\",\n    \"MICROSOFT.AUTHORIZATION/POLICYASSIGNMENTS/DELETE\",\n    \"MICROSOFT.SECURITY/PRICINGS/WRITE\",\n    \"MICROSOFT.INSIGHTS/DIAGNOSTICSETTINGS/DELETE\",\n    \"MICROSOFT.OPERATIONALINSIGHTS/WORKSPACES/DELETE\",\n    \"MICROSOFT.SECURITYINSIGHTS/ALERTRULES/DELETE\"\n)\n| where isnotempty(CallerIpAddress)\n| extend SourceIP = iff(CallerIpAddress matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+:\",\n                        tostring(split(CallerIpAddress, \":\")[0]),\n                        CallerIpAddress)\n| where SourceIP !in (\"Azure Portal\", \"Internal\", \"PolicyEvaluation\")\n| where SourceIP matches regex @\"^\\d+\\.\\d+\\.\\d+\\.\\d+$\" or SourceIP contains \":\"\n| project TimeGenerated, Caller, SourceIP, OperationNameValue,\n          ActivityStatusValue, ResourceGroup, ResourceId, SubscriptionId\n| order by TimeGenerated desc",
+                "queryFrequency": "PT5M",
+                "queryPeriod": "PT5M",
+                "triggerOperator": "GreaterThan",
+                "triggerThreshold": 0,
+                "suppressionDuration": "PT5H",
+                "suppressionEnabled": false,
+                "startTimeUtc": null,
+                "tactics": [
+                    "InitialAccess",
+                    "Persistence",
+                    "PrivilegeEscalation",
+                    "DefenseEvasion"
+                ],
+                "techniques": [
+                    "T1078",
+                    "T1136",
+                    "T1098",
+                    "T1562"
+                ],
+                "subTechniques": [
+                    "T1078.003",
+                    "T1136.001",
+                    "T1562.008"
+                ],
+                "alertRuleTemplateName": null,
+                "incidentConfiguration": {
+                    "createIncident": true,
+                    "groupingConfiguration": {
+                        "enabled": false,
+                        "reopenClosedIncident": false,
+                        "lookbackDuration": "PT5H",
+                        "matchingMethod": "AllEntities",
+                        "groupByEntities": [],
+                        "groupByAlertDetails": [],
+                        "groupByCustomDetails": []
+                    }
+                },
+                "eventGroupingSettings": {
+                    "aggregationKind": "AlertPerResult"
+                },
+                "alertDetailsOverride": {
+                    "alertDynamicProperties": []
+                },
+                "customDetails": {},
+                "entityMappings": [
+                    {
+                        "entityType": "Account",
+                        "fieldMappings": [
+                            {
+                                "identifier": "FullName",
+                                "columnName": "Caller"
+                            }
+                        ]
+                    },
+                    {
+                        "entityType": "IP",
+                        "fieldMappings": [
+                            {
+                                "identifier": "Address",
+                                "columnName": "SourceIP"
+                            }
+                        ]
+                    }
+                ],
+                "sentinelEntitiesMappings": null,
+                "templateVersion": null
+            }
+        }
+    ]
+}
