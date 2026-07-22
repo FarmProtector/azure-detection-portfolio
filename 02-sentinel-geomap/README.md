@@ -31,26 +31,6 @@ just *volume*.
 
 ![Risk-scored map of Azure control-plane origins](./screenshots/risk-map-overview.png)
 
-## Deploying it
-
-1. In Sentinel, go to **Workbooks → New → Advanced Editor** and paste the
-   JSON, or **Edit → Advanced Editor → Gallery Template** on an existing one.
-2. Replace the placeholder resource ID
-   (`/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>`)
-   with your own Log Analytics workspace.
-3. Save, then use the **Minimum risk tier** pill to collapse the view to
-   Critical-only during triage.
-
-## Design notes worth calling out in an interview
-
-- The classifier is a `case()` statement, ordered so the first match wins —
-  the tiering logic is the actual engineering decision here, not the map itself.
-- Bubble size and color are both driven by `RiskScore`, not raw operation
-  count, so a single Critical call outweighs a chatty CI/CD pipeline.
-- Operations not in any tier list fall into `Low` and are silently dropped
-  from every widget — worth periodically auditing so new resource providers
-  don't go unmapped.
-
 ## Skills demonstrated
 
 Microsoft Sentinel Workbooks · KQL · Azure control-plane telemetry ·
