@@ -27,7 +27,7 @@ just *volume*.
 | File | Contents |
 |---|---|
 | [`azure-activity-georisk-workbook.json`](./azure-activity-georisk-workbook.json) | Full workbook: parameterized time range and minimum-risk-tier filter, summary tiles, risk-scored map, timeline by tier, per-IP and per-caller breakdown tables |
-| `screenshots/` | *(add your own)* rendered workbook views |
+![Risk-scored map of Azure control-plane origins](./screenshots/risk-map-overview.png)
 
 ## Deploying it
 
