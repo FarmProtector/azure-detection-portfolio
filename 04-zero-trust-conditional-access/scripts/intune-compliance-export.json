@@ -1,0 +1,47 @@
+{
+  "Assignments": null,
+  "CreatedDateTime": "2026-07-25T17:02:15.4309241Z",
+  "Description": "Baseline compliance",
+  "DeviceSettingStateSummaries": null,
+  "DeviceStatusOverview": {
+    "ConfigurationVersion": null,
+    "ErrorCount": null,
+    "FailedCount": null,
+    "Id": null,
+    "LastUpdateDateTime": null,
+    "NotApplicableCount": null,
+    "PendingCount": null,
+    "SuccessCount": null
+  },
+  "DeviceStatuses": null,
+  "DisplayName": "WIN-Baseline-Compliance",
+  "Id": "6ac0e64e-c837-4fdc-80ca-7fab2493bdff",
+  "LastModifiedDateTime": "2026-07-25T17:02:15.4309241Z",
+  "ScheduledActionsForRule": null,
+  "UserStatusOverview": {
+    "ConfigurationVersion": null,
+    "ErrorCount": null,
+    "FailedCount": null,
+    "Id": null,
+    "LastUpdateDateTime": null,
+    "NotApplicableCount": null,
+    "PendingCount": null,
+    "SuccessCount": null
+  },
+  "UserStatuses": null,
+  "Version": 1,
+  "AdditionalProperties": {
+    "@odata.type": "#microsoft.graph.windows10CompliancePolicy",
+    "passwordRequired": false,
+    "passwordBlockSimple": false,
+    "passwordRequiredToUnlockFromIdle": false,
+    "passwordRequiredType": "deviceDefault",
+    "requireHealthyDeviceReport": false,
+    "osMinimumVersion": "10.0.19045",
+    "earlyLaunchAntiMalwareDriverEnabled": false,
+    "bitLockerEnabled": true,
+    "secureBootEnabled": true,
+    "codeIntegrityEnabled": false,
+    "storageRequireEncryption": false
+  }
+}
