@@ -16,7 +16,16 @@ role's "Key Responsibilities."
 | [`policies/ca-policies-export-redacted.json`](./policies/ca-policies-export-redacted.json) | All five CA policies, exported via Microsoft Graph PowerShell |
 | [`policies/intune-compliance-export.json`](./policies/intune-compliance-export.json) | Intune Windows compliance policy |
 | [`scripts/Export-CAPolicies.ps1`](./scripts/Export-CAPolicies.ps1) | Exports both, via Graph SDK, read-only scopes |
-| `screenshots/` | Policy configuration and "What If" simulation results |
+| [`screenshots/`](./screenshots) | Policy configuration and "What If" simulation results |
+
+## Setup
+
+A break-glass admin account, excluded from every policy, and synthetic
+test users representing a standard account and a scoped admin role.
+
+![Break-glass account creation](./screenshots/00-break-glass-account.png)
+
+![Test user accounts](./screenshots/01-test-users.png)
 
 ## The policies
 
@@ -31,6 +40,16 @@ role's "Key Responsibilities."
 All five were validated with Entra's "What If" tool before any enforcement
 decision was made — see Validation below.
 
+![CA001 — Require MFA for all users](./screenshots/02-policy-mfa-all-users.png)
+
+![CA002 — Block legacy authentication](./screenshots/03-policy-block-legacy-auth.png)
+
+![CA003 — Compliant device or MFA for admin roles](./screenshots/05-policy-compliant-device-or-mfa.png)
+
+![CA004 — Sign-in risk policy](./screenshots/06-policy-signin-risk.png)
+
+![CA005 — Admin sign-in frequency](./screenshots/07-policy-signin-frequency.png)
+
 ## Intune compliance policy (WIN-Baseline-Compliance)
 
 Five settings, each chosen for a specific threat rather than as a general
@@ -43,6 +62,8 @@ hardening checklist:
 | Minimum OS version (10.0.19045) | Unpatched, publicly known vulnerabilities |
 | Require Firewall | Lateral movement and inbound exposure |
 | Require Antivirus | Baseline malware detection — also a control auditors ask about by name |
+
+![Intune compliance policy configuration](./screenshots/04-intune-compliance-policy.png)
 
 **Deliberately left out:** device password/PIN complexity, on the reasoning
 that Windows sign-in requirements are already enforced through Entra ID and
@@ -60,8 +81,12 @@ not live enforcement.
 
 ## Report-only vs. enforced
 
-
-The reason I chose report only is that in a real world scenario you would want to test your policies out first and observe how our users behave. In an enterprise environment, if we just set the policy to enforce right away it would create headache for the internal support team from all the users that either missed the email or did not adopt to the new policies. Additionally, this is a lab and there are no live traffic to validate against. 
+The reason I chose report-only is that in a real-world scenario you would
+want to test your policies first and observe how users behave. In an
+enterprise environment, setting a policy straight to enforce would create
+a headache for the internal support team from every user who missed the
+notification email or hadn't yet adjusted to the new requirement.
+Additionally, this is a lab with no live traffic to validate against.
 
 ## Validation
 
@@ -69,6 +94,8 @@ Rather than trust the policy configuration blind, each policy was checked
 against Entra's "What If" tool with predicted outcomes written down before
 running it — the same discipline as validating a detection rule before
 trusting its output.
+
+![What If simulation results](./screenshots/08-whatif-simulation.png)
 
 Two results were more informative than a clean pass would have been:
 
@@ -91,6 +118,8 @@ Two results were more informative than a clean pass would have been:
   precedence rules, since legacy auth protocols can't perform MFA at all;
   requiring it would functionally just be a slower block.
 
+![What If simulation — break-glass account](./screenshots/09-whatif-breakglass.png)
+
 ## Design decisions
 
 - **Break-glass account, excluded from every policy.** Standard Zero Trust
@@ -104,7 +133,7 @@ Two results were more informative than a clean pass would have been:
   (sign-in frequency, persistent browser session) rather than grant controls,
   because it's constraining how long an already-authenticated admin session
   lasts, not gating the authentication itself.
-  
+
 ## Next steps
 
 - **CA006 — block device code flow.** Not built in this iteration.
