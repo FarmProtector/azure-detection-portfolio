@@ -118,7 +118,7 @@ Two results were more informative than a clean pass would have been:
   precedence rules, since legacy auth protocols can't perform MFA at all;
   requiring it would functionally just be a slower block.
 
-![What If simulation — break-glass account](./screenshots/09-whatif-breakglass.png)
+![What If — testuser-standard matches no policies (all excluded during build/testing phase)](./screenshots/08-whatif-simulation.png)
 
 ## Design decisions
 
