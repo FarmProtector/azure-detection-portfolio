@@ -35,7 +35,7 @@ operations) is built from the same reasoning as the ATT&CK mapping in the
 incident report, and the analytics rule reuses both directly — same
 Critical-tier classifier, same technique mapping, now running live rather
 than sitting in a dashboard. The Conditional Access project closes a gap
-the other three share: none of them prevent the initial compromise — the
+the other three share: none of them prevent the initial compromise, the
 threat hunt's attacker got in with a valid but unprotected credential from
 an unexpected source, which is exactly the scenario CA001 and CA004 are
 built to catch before it becomes something to hunt.
@@ -51,7 +51,7 @@ IDs have been redacted or replaced with placeholders throughout. Two
 projects document a validation gap rather than papering over it: the
 analytics rule was validated by query logic and configuration review after
 the shared range blocked its live-fire test, and the Conditional Access
-project's Intune compliance policy has no enrolled device to evaluate it —
+project's Intune compliance policy has no enrolled device to evaluate it,
 both are noted in their respective project READMEs.
 
 ## About me
