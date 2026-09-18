@@ -41,9 +41,9 @@ just *volume*.
 3. Save, then use the **Minimum risk tier** pill to collapse the view to
    Critical-only during triage.
 
-## Design notes worth calling out in an interview
+## Notes
 
-- The classifier is a `case()` statement, ordered so the first match wins —
+- The classifier is a `case()` statement, ordered so the first match wins,
   the tiering logic is the actual engineering decision here, not the map itself.
 - Bubble size and color are both driven by `RiskScore`, not raw operation
   count, so a single Critical call outweighs a chatty CI/CD pipeline.
