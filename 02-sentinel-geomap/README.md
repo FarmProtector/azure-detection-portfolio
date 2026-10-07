@@ -31,15 +31,17 @@ just *volume*.
 
 ![Risk-scored map of Azure control-plane origins](./screenshots/risk-map-overview.png)
 
-## How I deployed it:
+## Deploying it
 
 1. In Sentinel, go to **Workbooks → New → Advanced Editor** and paste the
-   JSON, or **Edit → Advanced Editor → Gallery Template** on an existing one.
+   JSON, or use **Edit → Advanced Editor → Gallery Template** on an
+   existing workbook.
 2. Replace the placeholder resource ID
    (`/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>`)
-   with your own Log Analytics workspace.
-3. Save, then use the **Minimum risk tier** pill to collapse the view to
-   Critical-only during triage.
+   with your own Log Analytics workspace. You can find the real value in
+   the workspace under **Properties**.
+3. Save, then use the **Minimum risk tier** pill to narrow the view to
+   Critical only during triage.
 
 ## Notes
 
