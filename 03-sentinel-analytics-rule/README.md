@@ -54,12 +54,12 @@ the context an analyst needs without manual lookup.
 - **Alert-to-incident grouping disabled.** Enabling it would silently
   re-merge the per-event alerts the query was built to keep separate.
 - **No automated response wired.** The shared workspace already has live
-  automation (Jira ticket creation) tied to other naming conventions —
+  automation (Jira ticket creation) tied to other naming conventions,
   deliberately avoided touching or triggering it.
 
 ## Validating it fires
 
-Tested by assigning a scoped Reader role on a personal resource group —
+Tested by assigning a scoped Reader role on a personal resource group,
 a minimal, reversible `roleAssignments/write` operation matching the
 Critical tier. The range's student permissions blocked the IAM write
 outright, which is itself a useful finding: the environment restricts
