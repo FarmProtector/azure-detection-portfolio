@@ -1,75 +1,53 @@
-# Sentinel Analytics Rule — Critical-Risk Control-Plane Operations
+# Sentinel Analytics Rule: Critical Risk Control Plane Operations
 
-Converts the Critical tier from the [geo-map workbook](../02-sentinel-geomap)
-risk classifier into a live Sentinel analytics rule with entity mapping,
-rather than leaving that logic in a passive dashboard.
+I took the Critical tier from my [geo map workbook](../02-sentinel-geomap) risk classifier and turned it into a live Sentinel analytics rule with entity mapping, so the logic actively alerts instead of sitting in a dashboard.
 
-> **Lab exercise, shared environment.** Built and tested in a shared
-> community cyber-range. No automated response (Teams/Jira) was wired to
-> this rule to avoid triggering shared infrastructure. The rule was
-> disabled after capturing these artifacts.
+> **This was a lab exercise in a shared environment.** I built and tested it in a shared community cyber range. I didn't connect any automated response (Teams or Jira) to this rule, so it wouldn't trigger shared infrastructure. I disabled the rule after capturing these screenshots.
 
-## What's in this folder
+## What's in This Folder
 
 | File | Contents |
 |---|---|
-| [`analytics-rule.json`](./analytics-rule.json) | Exported rule definition — query, scheduling, entity mappings, MITRE ATT&CK techniques |
-| [`screenshots/`](./screenshots) | Wizard configuration, step by step |
+| [`analytics-rule.json`](./analytics-rule.json) | The exported rule: query, schedule, entity mappings, and MITRE ATT&CK techniques |
+| [`screenshots/`](./screenshots) | Each step of the rule setup |
 
-![Rule summary — Review + create](./screenshots/04-review-create.png)
+![Rule summary, Review + create](./screenshots/04-review-create.png)
 
-## Configuration walkthrough
+## How I Configured It
 
-**General** — name, description, severity, and MITRE ATT&CK techniques.
+**General:** the rule name, description, severity, and MITRE ATT&CK techniques.
 
 ![General configuration](./screenshots/01-general.png)
 
-**Rule query and scheduling** — the Critical-tier KQL, run frequency, and
-alert threshold, alongside the results simulation showing the query
-returning real matches.
+**Rule query and scheduling:** the Critical tier KQL, how often it runs, and the alert threshold. The results simulation shows the query returning real matches.
 
 ![Rule query and scheduling](./screenshots/02-rule-query-logic.png)
 
 ![Query results in Advanced Hunting](./screenshots/02-rule-query-results.png)
 
-**Entity mapping** — Account (Caller) and IP (SourceIP), so incidents carry
-the context an analyst needs without manual lookup.
+**Entity mapping:** I mapped Account (Caller) and IP (SourceIP), so every incident already includes the context an analyst needs without looking it up.
 
 ![Entity mapping](./screenshots/06-entity-mapping.png)
 
-**Incident settings** — alert-to-incident grouping deliberately disabled
-(see Design decisions below).
+**Incident settings:** I turned off alert grouping on purpose. My reasons are below.
 
 ![Incident settings](./screenshots/03-Incident-settings.png)
 
-## Design decisions
+## Why I Built It This Way
 
-- **Critical tier only, not the full classifier.** A High-severity rule
-  shouldn't carry logic for tiers already judged less urgent — Medium/High
-  operations would need their own rule with their own severity.
-- **Per-event alerting, no aggregation.** The workbook aggregates by IP for
-  visualization; this rule intentionally does the opposite — one incident
-  per Critical event, so unrelated operations aren't pre-bundled before an
-  analyst sees them.
-- **Alert-to-incident grouping disabled.** Enabling it would silently
-  re-merge the per-event alerts the query was built to keep separate.
-- **No automated response wired.** The shared workspace already has live
-  automation (Jira ticket creation) tied to other naming conventions,
-  deliberately avoided touching or triggering it.
+- **I only included the Critical tier.** A High severity rule shouldn't fire on activity I already rated less urgent. Medium and High operations would need their own rule with their own severity.
+- **One incident per Critical event.** The workbook groups activity by IP to make the map readable. This rule does the opposite on purpose, so unrelated operations don't get bundled together before an analyst sees them.
+- **I turned off alert grouping.** Leaving it on would merge the separate alerts back together, which defeats the point of the query.
+- **I didn't connect automated response.** The shared workspace already has live automation (Jira ticket creation) tied to other rules, and I avoided touching or triggering it.
 
-## Validating it fires
+## Testing Whether It Fires
 
-Tested by assigning a scoped Reader role on a personal resource group,
-a minimal, reversible `roleAssignments/write` operation matching the
-Critical tier. The range's student permissions blocked the IAM write
-outright, which is itself a useful finding: the environment restricts
-role-assignment changes even for low-privilege, self-scoped test actions.
-That's the same least-privilege principle worth applying to a real
-production tenant, and it's why this rule is validated by query logic and
-configuration review rather than a live-fire incident screenshot.
+To test the rule, I tried to give myself a limited Reader role on my own resource group. That's a small, reversible `roleAssignments/write` action that matches the Critical tier. The cyber range blocked it because student accounts can't change role assignments, even on their own resources. That turned out to be a useful finding: the environment applies least privilege even to small test actions, which is the same principle a real production tenant should follow. Because of that, I validated the rule through its query logic and configuration rather than a live incident screenshot.
 
-## Skills demonstrated
+## Skills
 
-Sentinel analytics rule authoring · entity mapping · MITRE ATT&CK mapping ·
-incident grouping and alert-threshold design · safe testing practices in
-shared/multi-tenant lab environments
+- Writing Sentinel analytics rules
+- Entity mapping
+- MITRE ATT&CK mapping
+- Incident grouping and alert threshold design
+- Safe testing in shared lab environments
