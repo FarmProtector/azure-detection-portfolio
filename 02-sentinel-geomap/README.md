@@ -1,59 +1,49 @@
-# Sentinel Risk-Tiered Geo Map — Azure Control-Plane Changes
+# Sentinel Risk Tiered Geo Map: Azure Control Plane Changes
 
-A Microsoft Sentinel workbook that geolocates the caller IP behind every
-*mutating* Azure management operation, weights each one by how dangerous the
-operation is, and plots the result as a risk-scored map.
+I built a Microsoft Sentinel workbook that finds the location of the IP address behind every Azure management operation that changes something, scores each one by how dangerous it is, and plots the results on a risk scored map.
 
-## The problem it addresses
+## The Problem
 
-`AzureActivity` logs every management-plane call, but treating all
-write/delete/action operations as equally important buries the signal:
-a role assignment from an unfamiliar country is not the same event as a
-routine deployment. This workbook classifies operations into risk tiers
-before they ever reach the map, so bubble size reflects *danger*, not
-just *volume*.
+`AzureActivity` logs every management plane call, but treating every write, delete, and action as equally important buries the real signal. A role assignment from an unfamiliar country is not the same as a routine deployment. This workbook sorts operations into risk tiers before they reach the map, so the size of each bubble reflects how dangerous the activity is, not just how much of it there is.
 
-## Risk tiers
+## Risk Tiers
 
 | Tier | Weight | Example operations |
 |---|---|---|
 | **Critical** | 10 | Role assignments, `elevateAccess`, deleting diagnostic settings or alert rules |
-| **High** | 5 | Key Vault secret/access changes, NSG and firewall rule changes, storage key regeneration |
-| **Medium** | 1 | VM run-command/extension changes, SQL firewall rules, Logic App writes |
-| *Low (excluded)* | — | Routine operational writes not in the lists above |
+| **High** | 5 | Key Vault secret and access changes, NSG and firewall rule changes, storage key regeneration |
+| **Medium** | 1 | VM run command and extension changes, SQL firewall rules, Logic App changes |
+| *Low* | Not counted | Routine changes that don't match any list above |
 
-## What's in this folder
+## What's in This Folder
 
 | File | Contents |
 |---|---|
-| [`azure-activity-georisk-workbook.json`](./azure-activity-georisk-workbook.json) | Full workbook: parameterized time range and minimum-risk-tier filter, summary tiles, risk-scored map, timeline by tier, per-IP and per-caller breakdown tables |
-| [`screenshots/`](./screenshots) | Rendered workbook view — risk-scored map with live control-plane data |
+| [`azure-activity-georisk-workbook.json`](./azure-activity-georisk-workbook.json) | The full workbook: time range and minimum risk tier filters, summary tiles, the risk scored map, a timeline by tier, and breakdown tables by IP and by caller |
+| [`screenshots/`](./screenshots) | The workbook showing the risk scored map with live control plane data |
 
-![Risk-scored map of Azure control-plane origins](./screenshots/risk-map-overview.png)
+![Risk scored map of Azure control plane activity](./screenshots/risk-map-overview.png)
 
-## Deploying it
+## How to Deploy It
 
-1. In Sentinel, go to **Workbooks → New → Advanced Editor** and paste the
-   JSON, or use **Edit → Advanced Editor → Gallery Template** on an
-   existing workbook.
-2. Replace the placeholder resource ID
-   (`/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>`)
-   with your own Log Analytics workspace. You can find the real value in
-   the workspace under **Properties**.
-3. Save, then use the **Minimum risk tier** pill to narrow the view to
-   Critical only during triage.
+1. In Sentinel, go to **Workbooks → New → Advanced Editor** and paste in the JSON. You can also open an existing workbook and use **Edit → Advanced Editor → Gallery Template**.
+2. Replace the placeholder resource ID (`/subscriptions/<your-subscription-id>/resourceGroups/<your-resource-group>/providers/Microsoft.OperationalInsights/workspaces/<your-workspace-name>`) with your own Log Analytics workspace. You can find it under the workspace's **Properties**.
+3. Save it. During triage, set the **Minimum risk tier** filter to Critical to see only the most dangerous activity.
 
-## Notes
+## Why I Built It This Way
 
-- The classifier is a `case()` statement, ordered so the first match wins,
-  the tiering logic is the actual engineering decision here, not the map itself.
-- Bubble size and color are both driven by `RiskScore`, not raw operation
-  count, so a single Critical call outweighs a chatty CI/CD pipeline.
-- Operations not in any tier list fall into `Low` and are silently dropped
-  from every widget — worth periodically auditing so new resource providers
-  don't go unmapped.
+- **The risk tiers are the real work, not the map.** The classifier is a `case()` statement that stops at the first match, so I check Critical first. If an operation fits more than one tier, it always gets the highest one.
+- **Bubbles are sized by risk, not volume.** Both the size and color of each bubble come from `RiskScore`, not the number of operations, so a single Critical action stands out more than a busy CI/CD pipeline making hundreds of routine changes.
+- **Low tier activity is left off the map on purpose** to keep the view focused. The tradeoff is that new Azure services won't show up until they're added to a tier, so the lists should be reviewed periodically.
 
-## Skills demonstrated
+## Limitations
 
-Microsoft Sentinel Workbooks · KQL · Azure control-plane telemetry ·
-risk-based detection design · `geo_info_from_ip_address()` enrichment
+- **IP location isn't always accurate.** Geolocation can be wrong, and attackers often use VPNs or cloud hosting to appear somewhere else. The map is a starting point for investigation, not proof of where someone actually is.
+
+## Skills
+
+- Microsoft Sentinel workbooks
+- KQL
+- Azure control plane logs (`AzureActivity`)
+- Risk based detection design
+- IP enrichment with `geo_info_from_ip_address()`
