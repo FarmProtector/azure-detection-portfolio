@@ -1,154 +1,97 @@
-# Zero Trust / Conditional Access Policy Design
+# Zero Trust and Conditional Access Policy Design
 
-Five Microsoft Entra Conditional Access policies plus one Intune device
-compliance policy, built in a personal Microsoft 365 E5 trial tenant to
-demonstrate Zero Trust identity controls — the first bullet under this
-role's "Key Responsibilities."
+I built five Microsoft Entra Conditional Access policies and one Intune device compliance policy in a personal Microsoft 365 E5 trial tenant to practice Zero Trust identity controls.
 
-> **Lab exercise, personal tenant.** Built in a Microsoft 365 E5 trial
-> (`homelab728.onmicrosoft.com`) with a break-glass admin account and
-> synthetic test users. All identifiers in the exported JSON are redacted.
+> **This was a lab exercise in a personal tenant.** I built it in a Microsoft 365 E5 trial (`homelab728.onmicrosoft.com`) using a break glass admin account and test users. All identifiers in the exported JSON are redacted.
 
-## What's in this folder
+## What's in This Folder
 
 | File | Contents |
 |---|---|
-| [`policies/ca-policies-export-redacted.json`](./policies/ca-policies-export-redacted.json) | All five CA policies, exported via Microsoft Graph PowerShell |
-| [`policies/intune-compliance-export.json`](./policies/intune-compliance-export.json) | Intune Windows compliance policy |
-| [`scripts/Export-CAPolicies.ps1`](./scripts/Export-CAPolicies.ps1) | Exports both, via Graph SDK, read-only scopes |
-| [`screenshots/`](./screenshots) | Policy configuration and "What If" simulation results |
+| [`policies/ca-policies-export-redacted.json`](./policies/ca-policies-export-redacted.json) | All five CA policies, exported with Microsoft Graph PowerShell |
+| [`policies/intune-compliance-export.json`](./policies/intune-compliance-export.json) | The Intune Windows compliance policy |
+| [`scripts/Export-CAPolicies.ps1`](./scripts/Export-CAPolicies.ps1) | The script that exports both through the Graph SDK, using read only permissions |
+| [`screenshots/`](./screenshots) | Policy configuration and "What If" test results |
 
 ## Setup
 
-A break-glass admin account, excluded from every policy, and synthetic
-test users representing a standard account and a scoped admin role.
+I created a break glass admin account, excluded from every policy, plus test users representing a standard account and a scoped admin role.
 
-![Break-glass account creation](./screenshots/00-break-glass-account.png)
+![Break glass account creation](./screenshots/00-break-glass-account.png)
 
 ![Test user accounts](./screenshots/01-test-users.png)
 
-## The policies
+## The Policies
 
 | Policy | Scope | Control |
 |---|---|---|
 | CA001-Require-MFA-AllUsers | All users | Require MFA |
-| CA002-Block-LegacyAuth | All users | Block Exchange ActiveSync / other legacy clients |
-| CA003-Admin-CompliantDevice-Or-MFA | Global Admin, Security Admin, Privileged Role Admin | Require compliant device OR MFA |
-| CA004-SignIn-Risk-MFA | All users | Require MFA on Medium/High sign-in risk |
-| CA005-Admin-SignIn-Frequency | Same admin roles as CA003 | 4-hour sign-in frequency, no persistent browser session |
+| CA002-Block-LegacyAuth | All users | Block Exchange ActiveSync and other legacy clients |
+| CA003-Admin-CompliantDevice-Or-MFA | Global Admin, Security Admin, Privileged Role Admin | Require a compliant device or MFA |
+| CA004-SignIn-Risk-MFA | All users | Require MFA when sign in risk is Medium or High |
+| CA005-Admin-SignIn-Frequency | Same admin roles as CA003 | Sign in again every 4 hours, no persistent browser session |
 
-All five were validated with Entra's "What If" tool before any enforcement
-decision was made — see Validation below.
+I tested all five with Entra's "What If" tool before deciding whether to enforce them. The results are in the Validation section below.
 
-![CA001 — Require MFA for all users](./screenshots/02-policy-mfa-all-users.png)
+![CA001, require MFA for all users](./screenshots/02-policy-mfa-all-users.png)
 
-![CA002 — Block legacy authentication](./screenshots/03-policy-block-legacy-auth.png)
+![CA002, block legacy authentication](./screenshots/03-policy-block-legacy-auth.png)
 
-![CA003 — Compliant device or MFA for admin roles](./screenshots/05-policy-compliant-device-or-mfa.png)
+![CA003, compliant device or MFA for admin roles](./screenshots/05-policy-compliant-device-or-mfa.png)
 
-![CA004 — Sign-in risk policy](./screenshots/06-policy-signin-risk.png)
+![CA004, sign in risk policy](./screenshots/06-policy-signin-risk.png)
 
-![CA005 — Admin sign-in frequency](./screenshots/07-policy-signin-frequency.png)
+![CA005, admin sign in frequency](./screenshots/07-policy-signin-frequency.png)
 
-## Intune compliance policy (WIN-Baseline-Compliance)
+## Intune Compliance Policy (WIN-Baseline-Compliance)
 
-Five settings, each chosen for a specific threat rather than as a general
-hardening checklist:
+I chose five settings, each one aimed at a specific threat rather than taken from a general hardening checklist:
 
 | Setting | Threat it addresses |
 |---|---|
-| Require BitLocker | Device theft — without disk encryption, physical access is data access |
-| Require Secure Boot | Bootkit/rootkit persistence below the OS |
+| Require BitLocker | Device theft. Without disk encryption, anyone with the laptop has the data. |
+| Require Secure Boot | Bootkits and rootkits that hide below the operating system |
 | Minimum OS version (10.0.19045) | Unpatched, publicly known vulnerabilities |
 | Require Firewall | Lateral movement and inbound exposure |
-| Require Antivirus | Baseline malware detection — also a control auditors ask about by name |
+| Require Antivirus | Basic malware detection, and a control auditors specifically ask about |
 
 ![Intune compliance policy configuration](./screenshots/04-intune-compliance-policy.png)
 
-**Deliberately left out:** device password/PIN complexity, on the reasoning
-that Windows sign-in requirements are already enforced through Entra ID and
-Windows Hello — duplicating that control at the device-compliance layer
-risks the two definitions drifting apart over time rather than adding
-protection. **Attack Surface Reduction rules** were also left out: they
-need per-environment tuning against real software before deployment, and
-enabling them blind is a common cause of production outages, not a safe
-default for an unvalidated lab policy.
+**What I left out on purpose:** device password and PIN rules. Windows sign in requirements are already enforced through Entra ID and Windows Hello, and defining the same rule in two places means they can drift apart over time. I also left out **Attack Surface Reduction rules**, because they need to be tuned against the real software in an environment first. Turning them on without testing is a common cause of production outages.
 
-**Known gap:** no devices are enrolled in this tenant, so the policy is
-authored and exportable but has never evaluated a real device. CA003's
-"compliant device" branch is therefore validated by configuration review,
-not live enforcement.
+**Known gap:** no devices are enrolled in this tenant, so the compliance policy is built and exported but has never checked a real device. That means CA003's "compliant device" option was validated by reviewing the configuration, not by live enforcement.
 
-## Report-only vs. enforced
+## Report Only vs. Enforced
 
-The reason I chose report-only is that in a real-world scenario you would
-want to test your policies first and observe how users behave. In an
-enterprise environment, setting a policy straight to enforce would create
-a headache for the internal support team from every user who missed the
-notification email or hadn't yet adjusted to the new requirement.
-Additionally, this is a lab with no live traffic to validate against.
+I left the policies in report only mode. In a real environment, you want to test policies first and see how they affect users. Switching a policy straight to enforced would flood the help desk with calls from everyone who missed the announcement email or hadn't set up MFA yet. This is also a lab with no real sign in traffic to test against.
 
 ## Validation
 
-Rather than trust the policy configuration blind, each policy was checked
-against Entra's "What If" tool with predicted outcomes written down before
-running it — the same discipline as validating a detection rule before
-trusting its output.
+Instead of trusting the configuration, I tested each policy with Entra's "What If" tool. I wrote down what I expected to happen before running each test, the same way you'd validate a detection rule before trusting its alerts.
 
 ![What If simulation results](./screenshots/08-whatif-simulation.png)
 
-Two results were more informative than a clean pass would have been:
+Three results taught me more than a clean pass would have:
 
-- **The admin account (`sahilk@...`) matched zero policies.** It had been
-  excluded from all five during the build, which is correct for the build
-  phase but not intended as a permanent state — see the report-only/enforced
-  decision above.
-- **The break-glass account also matched zero policies** — same result,
-  opposite meaning. Its exclusion is permanent by design: a break-glass
-  account exists specifically to survive an MFA outage or a CA
-  misconfiguration, which is why it's protected by a single strong
-  credential rather than the layered controls applied to every other
-  identity. Publishing a policy set therefore also publishes its exception
-  list — the excluded object IDs were redacted from the exported JSON for
-  exactly this reason, since the break-glass account's identity is the
-  single highest-value target in the tenant.
-- **Testing a legacy-auth sign-in showed both CA001 (require MFA) and
-  CA002 (block access) matching simultaneously.** Block wins over Require
-  when both apply — which is also the correct outcome independent of
-  precedence rules, since legacy auth protocols can't perform MFA at all;
-  requiring it would functionally just be a slower block.
+- **My admin account (`sahilk@...`) matched zero policies.** I had excluded it from all five while building them. That's correct during setup, but it isn't meant to be permanent.
+- **The break glass account also matched zero policies.** Same result, but for a different reason. Its exclusion is permanent by design: a break glass account exists so someone can still sign in during an MFA outage or after a bad policy change. That's why it's protected by one very strong credential instead of the layered controls on every other account. It also means that publishing a policy set reveals its exception list, so I redacted the excluded object IDs from the exported JSON. The break glass account is the most valuable target in the tenant.
+- **A legacy authentication sign in matched both CA001 (require MFA) and CA002 (block access).** When both apply, Block wins. That's the right outcome anyway, because legacy protocols can't do MFA at all, so requiring it would just be a slower way of blocking.
 
-![What If — testuser-standard matches no policies (all excluded during build/testing phase)](./screenshots/08-whatif-simulation.png)
+## Why I Built It This Way
 
-## Design decisions
+- **A break glass account excluded from every policy.** This is standard Zero Trust practice. A bad Conditional Access policy or an MFA outage should never be able to lock every admin out of the tenant at once.
+- **Report only before enforced, always.** An untested policy applied to all users can lock out the whole tenant, admins included, with one click. Report only mode evaluates real sign ins without applying the control, so you can check who it affects first.
+- **Grant controls and session controls kept separate.** CA005 uses session controls (sign in frequency and no persistent browser session) instead of grant controls, because it limits how long an admin stays signed in, not whether they can sign in.
 
-- **Break-glass account, excluded from every policy.** Standard Zero Trust
-  practice — a Conditional Access misconfiguration or MFA provider outage
-  should never be able to lock every admin out of the tenant simultaneously.
-- **Report-only before enforced, always.** An untested policy applied to
-  "All users" can lock out an entire tenant, including its admins, in one
-  save. Report-only evaluates against real sign-in traffic without applying
-  the control, so scope and blast radius can be checked first.
-- **Grant vs. session controls kept separate.** CA005 uses session controls
-  (sign-in frequency, persistent browser session) rather than grant controls,
-  because it's constraining how long an already-authenticated admin session
-  lasts, not gating the authentication itself.
+## Next Steps
 
-## Next steps
+- **CA006: block device code flow.** I haven't built this yet. Device code sign in is what I used to connect my PowerShell export script to Graph, and it's also a known phishing technique. An attacker generates a real code and tricks someone into entering it on the legitimate Microsoft login page, which hands the attacker a valid token. I ran into this flow firsthand while troubleshooting Graph authentication for this project. It's worth blocking with Entra's "Authentication flows" condition for any account that has no reason to use it.
 
-- **CA006 — block device code flow.** Not built in this iteration.
-  Device code authentication is the flow used to connect the PowerShell
-  export script to Graph, and it's also a known phishing vector — an
-  attacker generates a real code and tricks a user into entering it at
-  the legitimate Microsoft login page, receiving a valid token in
-  return. Encountered this firsthand while troubleshooting Graph
-  authentication for this project; worth constraining via Entra's
-  "Authentication flows" condition for identities that have no
-  legitimate reason to use it.
+## Skills
 
-## Skills demonstrated
-
-Microsoft Entra Conditional Access · Zero Trust policy design · Intune
-device compliance · Microsoft Graph PowerShell SDK · policy validation via
-Entra "What If" · least-privilege API scoping (read-only Graph scopes,
-verified rather than assumed)
+- Microsoft Entra Conditional Access
+- Zero Trust policy design
+- Intune device compliance
+- Microsoft Graph PowerShell SDK
+- Testing policies with Entra "What If"
+- Least privilege API permissions (read only Graph scopes, verified)
